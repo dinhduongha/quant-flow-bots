@@ -16,12 +16,12 @@
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" Trim="false" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.8" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.5.0" />
     <!-- Direct override: JWT 8.x still pulls Newtonsoft.Json 11.0.1 (vuln NU1903 GHSA-5crp-9r3c-p9vr).
-         13.0.3 is the first version past all known advisories. -->
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+         13.0.4 là patch mới nhất của line 13.x, đã đi qua mọi advisory đã biết. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- MIT-licensed Skia rendering for order-book wall snapshot images (bundles win-x64 native). -->
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.8" />
@@ -31,12 +31,7 @@
     <ProjectReference Include="..\QuantFlowBots.Infrastructure\QuantFlowBots.Infrastructure.csproj" />
     <ProjectReference Include="..\QuantFlowBots.Domain\QuantFlowBots.Domain.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <!-- Inherits System.Security.Cryptography.Xml transitively from Infrastructure — same justification
-         applies (see Infrastructure.csproj). Suppress per-advisory, not blanket NU1903. -->
-    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-37gx-xxp4-5rgx" />
-    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-w3x6-4m5h-cxqf" />
-  </ItemGroup>
+  <!-- Suppress block đã gỡ cùng Infrastructure.csproj — xem comment ở đó. -->
   <ItemGroup>
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" />

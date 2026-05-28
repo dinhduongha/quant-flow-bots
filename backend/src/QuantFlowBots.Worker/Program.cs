@@ -16,6 +16,9 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Configuration.AddUserSecrets<Program>(optional: true);
 
 builder.Services.AddInfrastructure(builder.Configuration);
+// Worker là process duy nhất chạy các hosted service singleton-on-cluster
+// (Telegram notifier, call-counter flush, risk gate bootstrap). API không gọi method này.
+builder.Services.AddInfrastructureHostedServices();
 
 builder.Services.AddSingleton(sp =>
 {
@@ -55,10 +58,33 @@ builder.Services.AddHostedService<RiskGateEnforcerWorker>();
 
 var host = builder.Build();
 
+// Migration là trách nhiệm CỦA API process (xem QuantFlowBots.Api/Program.cs).
+// Worker chỉ chờ API hoàn tất migrate rồi mới chạy — tránh race trên __EFMigrationsLock
+// nếu cả 2 process cùng start cold (deadlock được vì EF Core lock pessimistic).
+// Vẫn gọi EnsureTimescaleAsync + SeedAsync ở Worker để Worker cũng tự khởi tạo được khi
+// chạy standalone (test env), nhưng cả hai đều idempotent nên chạy 2 lần vô hại.
 using (var scope = host.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<QuantFlowBotsDbContext>();
-    await db.Database.MigrateAsync();
+    var workerStartLogger = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
+        .CreateLogger("WorkerStartup");
+    var waitDeadline = DateTimeOffset.UtcNow.AddMinutes(2);
+    while (true)
+    {
+        try
+        {
+            var pending = await db.Database.GetPendingMigrationsAsync();
+            if (!pending.Any()) break;
+            workerStartLogger.LogInformation("Worker đang chờ API migrate xong — còn {Count} migration pending", pending.Count());
+        }
+        catch (Exception ex)
+        {
+            workerStartLogger.LogWarning(ex, "Worker chưa kết nối được DB, sẽ retry");
+        }
+        if (DateTimeOffset.UtcNow > waitDeadline)
+            throw new InvalidOperationException("Worker chờ migration > 2 phút — API có chạy không?");
+        await Task.Delay(TimeSpan.FromSeconds(3));
+    }
     await DbSeeder.EnsureTimescaleAsync(db, CancellationToken.None);
     await DbSeeder.SeedAsync(db, CancellationToken.None);
 }

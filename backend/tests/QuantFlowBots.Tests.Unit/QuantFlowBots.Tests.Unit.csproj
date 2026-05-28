@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>QuantFlowBots.Tests.Unit</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- xUnit chính + runner cho `dotnet test`. xunit.runner.visualstudio cho phép VS/Rider
+         discover tests; Microsoft.NET.Test.Sdk là test host. Pin patch mới nhất net10. -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Test toàn bộ tầng Infrastructure + Application + Domain. Không reference Api/Worker
+         vì test unit, không boot host. -->
+    <ProjectReference Include="..\..\src\QuantFlowBots.Domain\QuantFlowBots.Domain.csproj" />
+    <ProjectReference Include="..\..\src\QuantFlowBots.Application\QuantFlowBots.Application.csproj" />
+    <ProjectReference Include="..\..\src\QuantFlowBots.Infrastructure\QuantFlowBots.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

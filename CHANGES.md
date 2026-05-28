@@ -260,3 +260,49 @@ Toán tử `??` **chỉ thay `null`, không thay chuỗi rỗng** → `userDir="
 - DB container **không có volume** → tuyệt đối không `docker compose down -v` / recreate `qfb-timescaledb`. Đã có dump backup ở `_backup/`.
 - Live trading bị giới hạn **TESTNET only**; `WITHDRAW` permission bị chặn nhiều lớp.
 - API key tài khoản: mã hóa AES-GCM server-side, FE **không bao giờ** thấy key gốc.
+
+---
+
+## 16. Post-.NET10 hardening (2026-05-28, lô 2)
+
+Sau khi user rà soát manual phát hiện 6 điểm cần fix. Xử lý tuần tự từng cái:
+
+### 16.1 Tách hosted services ra `AddInfrastructureHostedServices()`
+- **Trước**: `AddInfrastructure()` đăng ký 3 `IHostedService` (BinanceCallCounterFlushService, RiskGateBootstrap, TelegramNotifier). Cả API và Worker đều gọi `AddInfrastructure()` ⇒ 3 service chạy **2 lần** mỗi cluster.
+- **Hậu quả**: TelegramNotifier gửi alert trùng; BinanceCallCounterFlush ghi đè counter Redis của process còn lại; RiskGateBootstrap chạy thừa.
+- **Fix**: tách method `AddInfrastructureHostedServices()` riêng, chỉ Worker `Program.cs` gọi. API không gọi.
+- File: `Infrastructure/DependencyInjection.cs`, `Worker/Program.cs`.
+
+### 16.2 Worker bỏ `MigrateAsync`, chờ pending=0
+- **Trước**: Cả API (`Api/Program.cs:106`) và Worker (`Worker/Program.cs:61`) tự `db.Database.MigrateAsync()` khi startup. Race trên `__EFMigrationsLock` (EF lock pessimistic) → có thể deadlock cold start.
+- **Fix**: Worker đổi sang **chờ** — poll `GetPendingMigrationsAsync()` mỗi 3s, timeout 2 phút, throw nếu API chưa migrate xong.
+- **Lưu ý vận hành**: phải start API trước Worker (hoặc start song song nhưng API phải migrate xong trong 2 phút).
+
+### 16.3 Bump packages 10.0.0 → 10.0.8 + gỡ vuln suppress
+- Bump **toàn bộ Microsoft.\* family** 10.0.0 → 10.0.8 (EF Core, Identity, Hosting, Http, Logging, Options, JwtBearer, SignalR.Client).
+- `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.0 → 10.0.2 (chỉ có 10.0.2).
+- `Microsoft.Extensions.Identity.Stores` (Domain) 10.0.0 → 10.0.8.
+- `Newtonsoft.Json` 13.0.3 → 13.0.4.
+- **`System.Security.Cryptography.Xml` 10.0.5 → 10.0.8**: 10.0.8 đã patch cả 2 advisory (GHSA-37gx-xxp4-5rgx, GHSA-w3x6-4m5h-cxqf). **Gỡ luôn 4 dòng `NuGetAuditSuppress`** ở Infrastructure.csproj và Worker.csproj.
+- **Bỏ qua có chủ đích** (cần session riêng): SkiaSharp 2 → 3 (major, API đổi), Swashbuckle 7 → 10 (major), StackExchange.Redis 2.8 → 2.13, Hangfire 1.8.14 → 1.8.23, JWT 8.5 → 8.18.
+- Verify: `dotnet restore --force` → 0 NU1903; `dotnet build` → 0 error, 2 warning cosmetic (`logger` unread, `http` unused).
+
+### 16.4 Noop migration `NetUpgrade10SnapshotSync`
+- Snapshot `QuantFlowBotsDbContextModelSnapshot.cs` ghi `ProductVersion = "8.0.11"` từ thời .NET 8. EF không hỏng nhưng drift gây nhầm lẫn khi migrate kế tiếp.
+- Lệnh: `dotnet ef migrations add NetUpgrade10SnapshotSync ...` → migration file có `Up`/`Down` rỗng (true noop) và snapshot tự nâng `ProductVersion = "10.0.8"`.
+- Khi API startup sẽ tự apply (chỉ ghi 1 row vào `__ef_migrations_history`, không touch schema). **Data preserved**.
+
+### 16.5 Tạo test project skeleton `QuantFlowBots.Tests.Unit`
+- **Trước**: solution không có test project nào (chỉ 5 runtime project). Trading/risk code không có safety net.
+- **Tạo**: `backend/tests/QuantFlowBots.Tests.Unit/` (xUnit 2.9.2 + Microsoft.NET.Test.Sdk 17.12.0 + coverlet.collector 6.0.2). Reference Domain + Application + Infrastructure. Add vào sln.
+- **Test đầu tiên**: `KeywordSentimentScorerTests` — 5 case (neutral, only-bull, only-bear, mixed, magnitude cap). Chạy `dotnet test` → 5/5 pass, 862ms.
+- **Roadmap test (chưa làm)**:
+  - `RiskEngine` rules (per-bot risk limits)
+  - `RateLimitManager` decision table (Allow/Wait/Reject theo X-MBX-USED-WEIGHT)
+  - `EWMA SentimentAggregator` rolling math
+  - Binance gate flow (Redis fake) — sẽ vào `Tests.Integration` riêng
+
+### 16.6 Build verification cuối
+- `dotnet build`: 0 error, 0 NU1903, 2 warning cosmetic không liên quan.
+- `dotnet test`: 5/5 pass.
+- Tag `pre-net10-upgrade` (commit a61d374) vẫn dùng được để rollback nếu cần.

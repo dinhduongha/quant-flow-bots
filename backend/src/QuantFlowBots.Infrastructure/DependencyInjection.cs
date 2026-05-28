@@ -48,7 +48,9 @@ public static class DependencyInjection
         // Cross-process gate + per-process counter for all Binance REST traffic.
         // Attached to every typed client below via AddHttpMessageHandler — one chokepoint.
         services.AddSingleton<BinanceCallCounter>();
-        services.AddHostedService<BinanceCallCounterFlushService>();
+        // NOTE: BinanceCallCounterFlushService is a HostedService and is registered in
+        // AddInfrastructureHostedServices() — Worker-only, so the counter doesn't get
+        // flushed twice (API+Worker) and overwrite Redis counters of each other.
         services.AddSingleton<IBinanceGate, RedisBinanceGate>();
         services.AddSingleton<RateLimitManager>();
         services.AddTransient<BinanceGateHandler>();
@@ -75,7 +77,7 @@ public static class DependencyInjection
         services.AddSingleton<TickerSnapshotCache>();
         services.AddSingleton<QuantFlowBots.Application.Risk.ISymbolRiskGateStore, QuantFlowBots.Infrastructure.Risk.SymbolRiskGateStore>();
         services.AddSingleton<QuantFlowBots.Application.Risk.SymbolRiskGate>();
-        services.AddHostedService<QuantFlowBots.Infrastructure.Risk.RiskGateBootstrap>();
+        // RiskGateBootstrap moved to AddInfrastructureHostedServices() — Worker-only.
         services.AddSingleton<PositionMonitor>();
 
         services.AddSingleton<IApiKeyEncryption, AesApiKeyEncryption>();
@@ -110,7 +112,8 @@ public static class DependencyInjection
             c.BaseAddress = new Uri("https://api.alternative.me/");
             c.Timeout = TimeSpan.FromSeconds(8);
         });
-        services.AddHostedService<TelegramNotifier>();
+        // TelegramNotifier moved to AddInfrastructureHostedServices() — Worker-only,
+        // tránh gửi alert trùng (API + Worker mỗi process 1 lần).
         services.AddScoped<IBacktestRunner, BacktestRunner>();
 
         var redis = config.GetConnectionString("Redis");
@@ -119,6 +122,23 @@ public static class DependencyInjection
             services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redis));
         }
 
+        return services;
+    }
+
+    /// <summary>
+    /// Hosted services tách riêng vì chúng phải chạy đúng MỘT lần trên cluster (singleton
+    /// across processes), không phải trên cả API lẫn Worker. Chỉ Worker gọi method này.
+    /// - BinanceCallCounterFlushService: flush per-process call counter vào Redis. Nếu chạy
+    ///   ở cả 2 process, mỗi flush ghi đè giá trị process kia → mất số liệu.
+    /// - RiskGateBootstrap: warm-load risk gate state lúc khởi động. Idempotent nhưng vô ích
+    ///   khi chạy 2 lần.
+    /// - TelegramNotifier: subscribe bot event bus + gửi message. Chạy 2 lần = alert trùng.
+    /// </summary>
+    public static IServiceCollection AddInfrastructureHostedServices(this IServiceCollection services)
+    {
+        services.AddHostedService<BinanceCallCounterFlushService>();
+        services.AddHostedService<QuantFlowBots.Infrastructure.Risk.RiskGateBootstrap>();
+        services.AddHostedService<TelegramNotifier>();
         return services;
     }
 }
