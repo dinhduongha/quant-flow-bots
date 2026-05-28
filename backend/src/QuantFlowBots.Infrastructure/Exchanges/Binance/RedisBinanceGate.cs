@@ -109,7 +109,9 @@ public sealed class RedisBinanceGate(
     private async Task<int> GetOpensCounterAsync(IDatabase db)
     {
         var v = await db.StringGetAsync(OpensCounterKey);
-        return v.HasValue && int.TryParse(v, out var n) ? n : 0;
+        // Explicit string cast — .NET 10 added int.TryParse(ReadOnlySpan<byte>, …) which collides
+        // with RedisValue's dual implicit conversion (string + byte span) and the overload is ambiguous.
+        return v.HasValue && int.TryParse((string?)v, out var n) ? n : 0;
     }
 
     private async Task TryNotifyTelegramAsync(int statusCode, string reason, DateTimeOffset until, string endpoint, int openCount)
