@@ -18,6 +18,11 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+    <!-- Direct override of the transitive 9.0.0 — 10.0.5 is the latest Microsoft has shipped.
+         Both advisories sit in XML-signature parsing which we don't use (no untrusted XML deserialised
+         anywhere in this codebase). Suppressed precisely below — narrow targeting so anything else
+         still surfaces normally. Revisit when Microsoft ships a patched build. -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.5" />
     <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
     <PackageReference Include="Hangfire.Core" Version="1.8.14" />
     <PackageReference Include="Hangfire.PostgreSql" Version="1.20.9" />
@@ -25,5 +30,11 @@
   <ItemGroup>
     <ProjectReference Include="..\QuantFlowBots.Application\QuantFlowBots.Application.csproj" />
     <ProjectReference Include="..\QuantFlowBots.Domain\QuantFlowBots.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Narrowly suppress only the two unpatched System.Security.Cryptography.Xml advisories
+         (XML-signature parsing, not exploitable in this codebase). Any other NU1903 still surfaces. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-37gx-xxp4-5rgx" />
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-w3x6-4m5h-cxqf" />
   </ItemGroup>
 </Project>
