@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddSingleton<BinanceCallCounter>();
         services.AddHostedService<BinanceCallCounterFlushService>();
         services.AddSingleton<IBinanceGate, RedisBinanceGate>();
+        services.AddSingleton<RateLimitManager>();
         services.AddTransient<BinanceGateHandler>();
 
         services.AddHttpClient<BinanceRestClient>((sp, client) =>
@@ -67,14 +68,14 @@ public static class DependencyInjection
         services.AddSingleton<ISignalEventBus, InMemorySignalEventBus>();
         services.AddSingleton<InMemoryBotEventBus>();
         services.AddSingleton<IBotEventBus>(sp => sp.GetRequiredService<InMemoryBotEventBus>());
-        services.AddSingleton<IVolumeSpikeBus, InMemoryVolumeSpikeBus>();
         services.AddSingleton<IOrderBookWallBus, InMemoryOrderBookWallBus>();
         services.AddSingleton<OrderBookWallCache>();
         services.Configure<OrderBookWallOptions>(config.GetSection("OrderBookWalls"));
         services.AddSingleton<ITickStreamBus, InMemoryTickStreamBus>();
-        services.AddSingleton<VolumeSpikeCache>();
         services.AddSingleton<TickerSnapshotCache>();
-        services.AddSingleton<VolumeSpikeDetector>();
+        services.AddSingleton<QuantFlowBots.Application.Risk.ISymbolRiskGateStore, QuantFlowBots.Infrastructure.Risk.SymbolRiskGateStore>();
+        services.AddSingleton<QuantFlowBots.Application.Risk.SymbolRiskGate>();
+        services.AddHostedService<QuantFlowBots.Infrastructure.Risk.RiskGateBootstrap>();
         services.AddSingleton<PositionMonitor>();
 
         services.AddSingleton<IApiKeyEncryption, AesApiKeyEncryption>();
@@ -104,6 +105,11 @@ public static class DependencyInjection
         services.AddSingleton<ISentimentAggregator, SentimentAggregator>();
         services.AddSingleton<ReconcileService>();
         services.AddHttpClient("telegram");
+        services.AddHttpClient("alternative-me", c =>
+        {
+            c.BaseAddress = new Uri("https://api.alternative.me/");
+            c.Timeout = TimeSpan.FromSeconds(8);
+        });
         services.AddHostedService<TelegramNotifier>();
         services.AddScoped<IBacktestRunner, BacktestRunner>();
 

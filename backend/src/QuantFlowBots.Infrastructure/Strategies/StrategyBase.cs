@@ -16,22 +16,30 @@ public abstract class StrategyBase : IStrategy
     protected static decimal Dec(IReadOnlyDictionary<string, object?> p, string key, decimal defaultValue)
         => p.TryGetValue(key, out var v) && v is not null && decimal.TryParse(v.ToString(), out var d) ? d : defaultValue;
 
+    protected static string? Str(IReadOnlyDictionary<string, object?> p, string key, string? defaultValue)
+        => p.TryGetValue(key, out var v) && v is not null ? v.ToString() : defaultValue;
+
     public static IReadOnlyDictionary<string, object?> ParseJson(string json)
     {
         if (string.IsNullOrWhiteSpace(json) || json == "{}") return new Dictionary<string, object?>();
-        using var doc = JsonDocument.Parse(json);
-        var dict = new Dictionary<string, object?>();
-        foreach (var prop in doc.RootElement.EnumerateObject())
-        {
-            dict[prop.Name] = prop.Value.ValueKind switch
-            {
-                JsonValueKind.Number => prop.Value.GetDecimal(),
-                JsonValueKind.String => prop.Value.GetString(),
-                JsonValueKind.True => true,
-                JsonValueKind.False => false,
-                _ => prop.Value.ToString(),
-            };
-        }
-        return dict;
+        // Accept `// inline` comments and trailing commas — lets the Strategies UI ship templates
+        // annotated with explanations of each parameter without breaking the parser.
+        var options = new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+        using var doc = JsonDocument.Parse(json, options);
+        return (Dictionary<string, object?>)ParseElement(doc.RootElement)!;
     }
+
+    // Deep parser so nested children (used by the composite strategy) come through with their
+    // own Dictionary<string, object?> instead of flattening to a raw string.
+    private static object? ParseElement(JsonElement el) => el.ValueKind switch
+    {
+        JsonValueKind.Number => el.GetDecimal(),
+        JsonValueKind.String => el.GetString(),
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.Null => null,
+        JsonValueKind.Array => el.EnumerateArray().Select(ParseElement).ToList(),
+        JsonValueKind.Object => el.EnumerateObject().ToDictionary(p => p.Name, p => ParseElement(p.Value)),
+        _ => el.ToString(),
+    };
 }

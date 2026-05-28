@@ -44,4 +44,6 @@ public interface ISentimentAggregator
     void Apply(ScoredSentiment evt);
     SentimentSnapshot Get(string symbolCode);
     IReadOnlyList<SentimentSnapshot> Top(int n, bool bullish = true);
+    void Reset(string symbolCode);
+    void ResetAll();
 }

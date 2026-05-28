@@ -39,6 +39,11 @@ public sealed class SentimentAggregator : ISentimentAggregator
         lock (s) return new(key, s.RollingScore, s.RollingMagnitude, s.Count, s.LatestScore, s.LatestAt);
     }
 
+    public void Reset(string symbolCode)
+        => _bySymbol.TryRemove(symbolCode.ToUpperInvariant(), out _);
+
+    public void ResetAll() => _bySymbol.Clear();
+
     public IReadOnlyList<SentimentSnapshot> Top(int n, bool bullish = true)
     {
         var snaps = _bySymbol.Select(kv =>

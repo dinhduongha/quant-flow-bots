@@ -11,7 +11,6 @@ public sealed class SignalRBroadcaster(
     IMarketEventBus marketBus,
     ISignalEventBus signalBus,
     IBotEventBus botBus,
-    IVolumeSpikeBus spikeBus,
     ISentimentBus sentimentBus,
     IOrderBookWallBus wallBus,
     ILogger<SignalRBroadcaster> logger) : BackgroundService, IRealtimeBroadcaster
@@ -20,27 +19,20 @@ public sealed class SignalRBroadcaster(
     {
         await ConnectWithRetryAsync(stoppingToken);
 
-        var tickerTask = Pump(marketBus.Tickers.ReadAllAsync(stoppingToken), t => PushTickerAsync(t, stoppingToken));
-        var klineTask = Pump(marketBus.Klines.ReadAllAsync(stoppingToken), k => PushKlineAsync(k, stoppingToken));
+        var tickerTask = Pump(marketBus.SubscribeTickers().ReadAllAsync(stoppingToken), t => PushTickerAsync(t, stoppingToken));
+        var klineTask = Pump(marketBus.SubscribeKlines().ReadAllAsync(stoppingToken), k => PushKlineAsync(k, stoppingToken));
         var signalTask = Pump(signalBus.Signals.ReadAllAsync(stoppingToken), s => PushSignalAsync(s, stoppingToken));
         var botTask = Pump(botBus.Events.ReadAllAsync(stoppingToken), b => PushBotEventAsync(b, stoppingToken));
-        var spikeTask = Pump(spikeBus.Spikes.ReadAllAsync(stoppingToken), s => PushVolumeSpikeAsync(s, stoppingToken));
         var sentimentTask = Pump(sentimentBus.Events.ReadAllAsync(stoppingToken), s => PushSentimentAsync(s, stoppingToken));
         var wallTask = Pump(wallBus.Walls.ReadAllAsync(stoppingToken), w => PushOrderBookWallAsync(w, stoppingToken));
 
-        await Task.WhenAll(tickerTask, klineTask, signalTask, botTask, spikeTask, sentimentTask, wallTask);
+        await Task.WhenAll(tickerTask, klineTask, signalTask, botTask, sentimentTask, wallTask);
     }
 
     public async Task PushOrderBookWallAsync(OrderBookWallEvent evt, CancellationToken cancellationToken)
     {
         if (hub.State == HubConnectionState.Connected)
             await hub.InvokeAsync("PublishOrderBookWall", evt, cancellationToken);
-    }
-
-    public async Task PushVolumeSpikeAsync(VolumeSpikeEvent evt, CancellationToken cancellationToken)
-    {
-        if (hub.State == HubConnectionState.Connected)
-            await hub.InvokeAsync("PublishVolumeSpike", evt, cancellationToken);
     }
 
     public async Task PushSentimentAsync(ScoredSentiment evt, CancellationToken cancellationToken)

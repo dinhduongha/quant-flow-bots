@@ -12,19 +12,6 @@ export type TickerEvent = {
   at: string
 }
 
-export type VolumeSpikeEvent = {
-  symbol: string
-  direction: 'Buy' | 'Sell'
-  price: number
-  priceChange5mPercent: number
-  quoteVolume: number
-  averageQuoteVolume: number
-  multiplier: number
-  takerBuyRatio: number
-  sparkline: number[]
-  at: string
-}
-
 export type KlineEvent = {
   exchange: string
   symbol: string
@@ -50,7 +37,6 @@ type SignalRState = {
   state: HubConnectionState
   subscribeTicker: (handler: (e: TickerEvent) => void) => () => void
   subscribeKline: (handler: (e: KlineEvent) => void) => () => void
-  subscribeVolumeSpike: (handler: (e: VolumeSpikeEvent) => void) => () => void
 }
 
 const SignalRContext = createContext<SignalRState | null>(null)
@@ -61,7 +47,6 @@ export function SignalRProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<HubConnectionState>(HubConnectionState.Disconnected)
   const tickerHandlers = useRef(new Set<(e: TickerEvent) => void>())
   const klineHandlers = useRef(new Set<(e: KlineEvent) => void>())
-  const volumeSpikeHandlers = useRef(new Set<(e: VolumeSpikeEvent) => void>())
 
   useEffect(() => {
     if (!token) {
@@ -78,7 +63,6 @@ export function SignalRProvider({ children }: { children: React.ReactNode }) {
 
     conn.on('ticker', (e: TickerEvent) => tickerHandlers.current.forEach(h => h(e)))
     conn.on('kline', (e: KlineEvent) => klineHandlers.current.forEach(h => h(e)))
-    conn.on('volumeSpike', (e: VolumeSpikeEvent) => volumeSpikeHandlers.current.forEach(h => h(e)))
     conn.onreconnecting(() => setState(HubConnectionState.Reconnecting))
     conn.onreconnected(() => setState(HubConnectionState.Connected))
     conn.onclose(() => setState(HubConnectionState.Disconnected))
@@ -113,10 +97,6 @@ export function SignalRProvider({ children }: { children: React.ReactNode }) {
     subscribeKline: (handler) => {
       klineHandlers.current.add(handler)
       return () => klineHandlers.current.delete(handler) as unknown as void
-    },
-    subscribeVolumeSpike: (handler) => {
-      volumeSpikeHandlers.current.add(handler)
-      return () => volumeSpikeHandlers.current.delete(handler) as unknown as void
     },
   }
 

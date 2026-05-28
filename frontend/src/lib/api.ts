@@ -79,7 +79,11 @@ export type MarketOverview = {
   updatedAt: string
   topGainers: MarketTicker[]
   topVolume: MarketTicker[]
-  sharpMovers: MarketTicker[]
+}
+
+export type AccountStats = {
+  openPositions: number
+  todayPnl: number
 }
 
 export type SymbolRow = {
@@ -96,19 +100,6 @@ export type NewListingDto = {
   price: number
   priceChangePercent: number
   quoteVolume: number
-}
-
-export type VolumeSpikeDto = {
-  symbol: string
-  direction: 'Buy' | 'Sell'
-  price: number
-  priceChange5mPercent: number
-  quoteVolume: number
-  averageQuoteVolume: number
-  multiplier: number
-  takerBuyRatio: number
-  sparkline: number[]
-  at: string
 }
 
 export type StrategyDto = {
@@ -297,6 +288,23 @@ export type UserSettingsDto = {
   telegramAlertsEnabled: boolean
   telegramBotTokenConfigured: boolean
   telegramChatId?: string | null
+  whaleAlertEnabled: boolean
+  whaleAlertBotTokenConfigured: boolean
+  whaleAlertChatId?: string | null
+  whaleAlertIntervals?: string | null
+  whaleAlertMultiplier: number
+  whaleAlertMinVolume24h: number
+  whaleAlertMode: 'intrabar' | 'candle_close'
+  whaleAlertCooldownMinutes: number
+  whaleAlertDirection: 'buy' | 'sell' | 'both'
+  whaleAlertLookback: number
+  wallAlertEnabled: boolean
+  wallAlertBotTokenConfigured: boolean
+  wallAlertChatId?: string | null
+  wallAlertMinNotional: number
+  wallAlertMaxDistancePct: number
+  wallAlertSide: '' | 'Bid' | 'Ask'
+  wallAlertCooldownMinutes: number
   updatedAt: string
 }
 
@@ -366,6 +374,14 @@ export type OrderBookWallsResponse = {
   totalCached: number
   count: number
   results: OrderBookWallDto[]
+}
+
+export type DepthLevel = { price: number; qty: number; notional: number }
+export type MarketDepth = {
+  symbol: string
+  at: string
+  bids: DepthLevel[]
+  asks: DepthLevel[]
 }
 
 export type FuturesPositionSnapshot =

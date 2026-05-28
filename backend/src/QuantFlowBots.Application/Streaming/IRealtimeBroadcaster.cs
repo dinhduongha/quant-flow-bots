@@ -8,7 +8,6 @@ public interface IRealtimeBroadcaster
     Task PushKlineAsync(KlineEvent evt, CancellationToken cancellationToken);
     Task PushSignalAsync(SignalEvent evt, CancellationToken cancellationToken);
     Task PushBotEventAsync(BotEvent evt, CancellationToken cancellationToken);
-    Task PushVolumeSpikeAsync(VolumeSpikeEvent evt, CancellationToken cancellationToken);
     Task PushSentimentAsync(ScoredSentiment evt, CancellationToken cancellationToken);
     Task PushOrderBookWallAsync(OrderBookWallEvent evt, CancellationToken cancellationToken);
 }

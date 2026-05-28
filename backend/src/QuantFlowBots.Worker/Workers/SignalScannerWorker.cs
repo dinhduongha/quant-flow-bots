@@ -15,7 +15,7 @@ public sealed class SignalScannerWorker(
         logger.LogInformation("SignalScannerWorker started, loading running bots...");
         await runtime.LoadRunningAsync(stoppingToken);
 
-        await foreach (var evt in marketBus.Klines.ReadAllAsync(stoppingToken))
+        await foreach (var evt in marketBus.SubscribeKlines().ReadAllAsync(stoppingToken))
         {
             if (!evt.Candle.IsClosed) continue;
             await runtime.OnCandleClosedAsync(evt, stoppingToken);

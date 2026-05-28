@@ -12,7 +12,6 @@ export const qk = {
   // Market data
   marketOverview: ['market', 'overview'] as const,
   newListings: (limit: number) => ['market', 'new-listings', limit] as const,
-  volumeSpikes: (limit: number) => ['market', 'volume-spikes', limit] as const,
   orderBookWalls: (params: OrderBookWallParams) => ['market', 'order-book-walls', params] as const,
   scanner: (params: ScannerParams) => ['market', 'scanner', params] as const,
 

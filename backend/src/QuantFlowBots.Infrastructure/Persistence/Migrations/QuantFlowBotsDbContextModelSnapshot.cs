@@ -930,6 +930,45 @@ namespace QuantFlowBots.Infrastructure.Persistence.Migrations
                     b.ToTable("symbols", "qfb");
                 });
 
+            modelBuilder.Entity("QuantFlowBots.Domain.Entities.SymbolRiskFlag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Symbol")
+                        .IsUnique();
+
+                    b.ToTable("symbol_risk_flags", "qfb");
+                });
+
             modelBuilder.Entity("QuantFlowBots.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1021,6 +1060,60 @@ namespace QuantFlowBots.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WallAlertBotToken")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WallAlertChatId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("WallAlertCooldownMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("WallAlertEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("WallAlertMaxDistancePct")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("WallAlertMinNotional")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("WallAlertSide")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("WhaleAlertBotToken")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WhaleAlertChatId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("WhaleAlertCooldownMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("WhaleAlertDirection")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("WhaleAlertEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("WhaleAlertIntervals")
+                        .HasColumnType("text");
+
+                    b.Property<int>("WhaleAlertLookback")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("WhaleAlertMinVolume24h")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("WhaleAlertMode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("WhaleAlertMultiplier")
+                        .HasColumnType("numeric");
 
                     b.HasKey("UserId");
 

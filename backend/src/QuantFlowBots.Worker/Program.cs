@@ -41,10 +41,17 @@ builder.Services.AddHostedService<MarketStreamWorker>();
 builder.Services.AddHostedService<CandleIngestionWorker>();
 builder.Services.AddHostedService<SignalScannerWorker>();
 builder.Services.AddHostedService<BotExecutionWorker>();
-builder.Services.AddHostedService<VolumeSpikeWorker>();
 builder.Services.AddHostedService<PositionMonitorWorker>();
 builder.Services.AddHostedService<LivePositionReconcilerWorker>();
-builder.Services.AddHostedService<OrderBookWallScannerWorker>();
+// WebSocket worker replaces the REST poller for near-realtime wall detection. The REST class
+// stays in the codebase for fallback / debugging — re-enable by swapping the registration.
+builder.Services.AddHostedService<OrderBookWallStreamWorker>();
+// builder.Services.AddHostedService<OrderBookWallScannerWorker>();
+builder.Services.AddHostedService<WhaleAlertWorker>();
+builder.Services.AddHostedService<WallAlertWorker>();
+builder.Services.AddHostedService<BinanceAnnouncementWorker>();
+builder.Services.AddHostedService<SymbolStatusReconcilerWorker>();
+builder.Services.AddHostedService<RiskGateEnforcerWorker>();
 
 var host = builder.Build();
 

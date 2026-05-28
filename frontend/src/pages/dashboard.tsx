@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Activity, ArrowDownRight, ArrowUpRight, CircleDollarSign, Gauge, RefreshCw, ShieldCheck, WalletCards } from 'lucide-react'
+import { Activity, Briefcase, CircleDollarSign, RefreshCw, TrendingUp, WalletCards } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,11 +9,12 @@ import { AuthGuard } from '@/components/auth-guard'
 import { NavBar } from '@/components/nav-bar'
 import { NewListings } from '@/components/new-listings'
 import { SymbolScanner } from '@/components/symbol-scanner'
-import { VolumeSpikes } from '@/components/volume-spikes'
 import { SentimentWidget } from '@/components/sentiment-widget'
+import { MarketVitals } from '@/components/market-vitals'
 import { OrderBookWalls } from '@/components/order-book-walls'
+import { VwapCrossScanner } from '@/components/vwap-cross-scanner'
 import { useSignalR, type TickerEvent } from '@/lib/signalr-context'
-import { api, type MarketOverview, type MarketTicker } from '@/lib/api'
+import { api, type AccountStats, type MarketOverview, type MarketTicker } from '@/lib/api'
 import { qk } from '@/lib/queries'
 
 export default function DashboardPage() {
@@ -30,11 +30,27 @@ function DashboardInner() {
   const [livePrices, setLivePrices] = useState<Record<string, { price: number; pct: number; flash: 'up' | 'down' | null }>>({})
   const prevPrices = useRef<Record<string, number>>({})
 
+  // Live wall-clock so the header timestamp keeps ticking even while we wait for the
+  // next refetch (otherwise it shows the old REST `updatedAt` and looks frozen).
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
   const { data: overview, isFetching: loading, error, refetch } = useQuery({
     queryKey: qk.marketOverview,
     queryFn: () => api<MarketOverview>('/api/market/overview'),
     staleTime: 30_000,
     refetchInterval: 60_000,
+    refetchIntervalInBackground: true,
+  })
+
+  const { data: accountStats } = useQuery({
+    queryKey: ['account-stats'],
+    queryFn: () => api<AccountStats>('/api/market/account-stats'),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
   })
 
   useEffect(() => {
@@ -67,7 +83,14 @@ function DashboardInner() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Markets</h1>
-            <p className="text-xs text-muted-foreground">Realtime via SignalR · {overview?.updatedAt ? new Date(overview.updatedAt).toLocaleTimeString() : 'loading…'}</p>
+            <p className="text-xs text-muted-foreground">
+              Realtime via SignalR · <span className="font-mono">{now.toLocaleTimeString()}</span>
+              {overview?.updatedAt && (
+                <span className="ml-1 text-[10px] opacity-70">
+                  (last sync {new Date(overview.updatedAt).toLocaleTimeString()})
+                </span>
+              )}
+            </p>
           </div>
           <Button size="sm" variant="outline" className="h-7 gap-1.5 border-border bg-surface text-xs" onClick={() => void refetch()} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -89,17 +112,18 @@ function DashboardInner() {
             icon={<CircleDollarSign className="h-4 w-4" />}
           />
           <MetricCard
-            title="Trading Mode"
-            value="PAPER + LIVE"
-            detail="Live = Binance Futures TESTNET"
-            tone="up"
-            icon={<ShieldCheck className="h-4 w-4" />}
+            title="Open Positions"
+            value={accountStats ? String(accountStats.openPositions) : '—'}
+            detail={accountStats?.openPositions ? 'Bots actively in market' : 'No positions right now'}
+            tone={accountStats?.openPositions ? 'up' : undefined}
+            icon={<Briefcase className="h-4 w-4" />}
           />
           <MetricCard
-            title="Risk Budget"
-            value="1.0%"
-            detail="Per trade (default)"
-            icon={<Gauge className="h-4 w-4" />}
+            title="Today's PnL"
+            value={accountStats ? fmtPnl(accountStats.todayPnl) : '—'}
+            detail="Realized · closed positions UTC today"
+            tone={accountStats == null ? undefined : accountStats.todayPnl >= 0 ? 'up' : 'down'}
+            icon={<TrendingUp className="h-4 w-4" />}
           />
         </div>
 
@@ -110,57 +134,13 @@ function DashboardInner() {
         )}
 
         <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3 pb-2">
-              <div>
-                <CardTitle className="text-sm">Momentum Watchlist</CardTitle>
-                <p className="text-[11px] text-muted-foreground">Top gainers ∪ top volume · live ticks</p>
-              </div>
-              <Badge variant="outline" className="h-5 border-border bg-surface-2 text-[10px] font-mono">{overview ? `${watchlist.length}` : '…'}</Badge>
-            </CardHeader>
-            <CardContent className="px-3 pt-0 pb-2">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="pl-3">Symbol</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="text-right">24h%</TableHead>
-                    <TableHead className="text-right pr-3">Volume</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {watchlist.map(row => {
-                    const live = livePrices[row.symbol]
-                    const price = live?.price ?? row.lastPrice
-                    const pct = live?.pct ?? row.priceChangePercent
-                    return (
-                      <TableRow key={row.symbol} className={live?.flash === 'up' ? 'flash-up' : live?.flash === 'down' ? 'flash-down' : ''}>
-                        <TableCell className="pl-3 font-medium">
-                          <Link to={`/symbol/${row.symbol}`} className="hover:text-primary">{row.symbol}</Link>
-                        </TableCell>
-                        <TableCell className={`text-right num ${live?.flash === 'up' ? 'text-up' : live?.flash === 'down' ? 'text-down' : ''}`}>
-                          {fmtPrice(price)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className={`inline-flex items-center gap-0.5 num text-[12px] ${pct >= 0 ? 'text-up' : 'text-down'}`}>
-                            {pct >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                            {pct >= 0 ? '+' : ''}{Number(pct).toFixed(2)}%
-                          </span>
-                        </TableCell>
-                        <TableCell className="pr-3 text-right num text-muted-foreground">{fmtBigNum(row.quoteVolume)}</TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <VwapCrossScanner />
 
-          <aside className="space-y-4">
+          <aside className="space-y-3">
+            <MarketVitals />
             <OrderBookWalls />
             <SentimentWidget />
             <SymbolScanner />
-            <VolumeSpikes />
             <NewListings />
 
             <Card>
@@ -173,20 +153,6 @@ function DashboardInner() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Sharp Movers <span className="text-muted-foreground font-normal">(≥ 5%)</span></CardTitle></CardHeader>
-              <CardContent className="space-y-1 px-3 pb-3 text-xs">
-                {overview?.sharpMovers?.slice(0, 8).map(t => (
-                  <Link key={t.symbol} to={`/symbol/${t.symbol}`} className="flex items-center justify-between rounded-sm border border-border/40 bg-surface px-2.5 py-1.5 hover:border-primary/40 hover:bg-surface-2">
-                    <span className="font-medium">{t.symbol}</span>
-                    <span className={`num ${t.priceChangePercent >= 0 ? 'text-up' : 'text-down'}`}>
-                      {t.priceChangePercent >= 0 ? '+' : ''}{Number(t.priceChangePercent).toFixed(2)}%
-                    </span>
-                  </Link>
-                ))}
-                {!overview?.sharpMovers?.length && <p className="text-muted-foreground">No sharp movers right now.</p>}
-              </CardContent>
-            </Card>
           </aside>
         </div>
       </div>
@@ -219,10 +185,11 @@ function StatusLine({ label, value }: { label: string; value: string }) {
   )
 }
 
-function fmtPrice(n: number): string {
-  if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 2 })
-  if (n >= 1) return n.toFixed(2)
-  return n.toPrecision(4)
+function fmtPnl(n: number): string {
+  const sign = n >= 0 ? '+' : '-'
+  const abs = Math.abs(n)
+  if (abs >= 1000) return `${sign}$${abs.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+  return `${sign}$${abs.toFixed(2)}`
 }
 
 function fmtPct(n: number | undefined): string {

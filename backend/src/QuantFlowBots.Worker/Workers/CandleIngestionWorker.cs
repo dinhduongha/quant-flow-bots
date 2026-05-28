@@ -21,7 +21,7 @@ public sealed class CandleIngestionWorker(
         var watch = new HashSet<string>(options.Value.WatchSymbols, StringComparer.OrdinalIgnoreCase);
         logger.LogInformation("CandleIngestionWorker persisting candles for {Count} watched symbols only.", watch.Count);
 
-        await foreach (var evt in bus.Klines.ReadAllAsync(stoppingToken))
+        await foreach (var evt in bus.SubscribeKlines().ReadAllAsync(stoppingToken))
         {
             if (!evt.Candle.IsClosed) continue;
             if (!watch.Contains(evt.Symbol)) continue;

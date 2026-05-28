@@ -36,9 +36,6 @@ public sealed class MarketHub(OrderBookWallCache wallCache) : Hub
     public Task PublishBotEvent(BotEvent evt) =>
         Clients.Group($"bot:{evt.BotId}").SendAsync("bot", evt);
 
-    public Task PublishVolumeSpike(VolumeSpikeEvent evt) =>
-        Clients.Group("market").SendAsync("volumeSpike", evt);
-
     public Task PublishSentiment(ScoredSentiment evt) =>
         Clients.Group("market").SendAsync("sentiment", evt);
 

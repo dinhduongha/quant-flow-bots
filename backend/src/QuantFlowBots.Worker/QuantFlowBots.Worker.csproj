@@ -5,11 +5,23 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>QuantFlowBots.Worker</RootNamespace>
     <UserSecretsId>quantflowbots-worker</UserSecretsId>
+    <!-- This worker parses hundreds of WS messages/sec (435 kline + depth streams). Server GC
+         sizes a large per-core heap for throughput and is slow to return memory to the OS, which
+         is what pushed the working set past 1.4GB. Workstation+concurrent GC keeps a much smaller
+         heap; ConserveMemory trades a little throughput to release pages back to the OS sooner. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" Trim="false" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.11" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.1.2" />
+    <!-- MIT-licensed Skia rendering for order-book wall snapshot images (bundles win-x64 native). -->
+    <PackageReference Include="SkiaSharp" Version="2.88.8" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.8" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\QuantFlowBots.Application\QuantFlowBots.Application.csproj" />

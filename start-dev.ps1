@@ -5,6 +5,49 @@ $frontendDir = Join-Path $root 'frontend'
 $composeFile = Join-Path $root 'docker-compose.yml'
 $envFile = Join-Path $root '.env'
 
+# Kill any previously-spawned API/Worker so we never end up with duplicate instances fighting
+# over port 5087 (the #1 cause of "login broken" — a zombie API holding the port while the new
+# one fails to bind). Matches our processes specifically so unrelated dotnet apps are untouched.
+function Stop-QfbProcesses {
+    $killed = 0
+
+    # 1) The apphost executables — most reliable signal. `dotnet run` / `dotnet watch run`
+    #    launch the built app as QuantFlowBots.Api.exe / QuantFlowBots.Worker.exe (NOT dotnet.exe),
+    #    so matching by process name catches the real server no matter how it was started.
+    foreach ($name in @('QuantFlowBots.Api', 'QuantFlowBots.Worker')) {
+        Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $killed++
+        }
+    }
+
+    # 2) Whatever still owns the API port (zombie / non-standard launch).
+    try {
+        $owners = Get-NetTCPConnection -LocalPort 5087 -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique
+        foreach ($ownerPid in $owners) {
+            Stop-Process -Id $ownerPid -Force -ErrorAction SilentlyContinue; $killed++
+        }
+    } catch {}
+
+    # 3) The `dotnet run` / `dotnet watch run` parent shells for this repo. The apphost dies in
+    #    step 1, but the parent can respawn it — kill parents whose command line is QFB-flavoured.
+    try {
+        $procs = Get-CimInstance Win32_Process -Filter "Name = 'dotnet.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -and ($_.CommandLine -like '*quant-flow-bots*' -or $_.CommandLine -like '*watch run*' -or $_.CommandLine -like '*run --no-build*') }
+        foreach ($p in $procs) {
+            Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue; $killed++
+        }
+    } catch {}
+
+    if ($killed -gt 0) {
+        Write-Host "Cleaned up $killed stale QFB process(es)." -ForegroundColor DarkYellow
+        Start-Sleep -Seconds 2   # let the OS release the socket before we rebind
+    }
+}
+
+Write-Host 'Stopping any previous QFB API/Worker instances...' -ForegroundColor Yellow
+Stop-QfbProcesses
+
 # Load .env into the current shell so docker-compose substitutes ${POSTGRES_PASSWORD} etc.
 if (Test-Path $envFile) {
     Get-Content $envFile | ForEach-Object {
@@ -78,8 +121,12 @@ if (-not $healthy) {
 }
 Write-Host 'Postgres is healthy.' -ForegroundColor Green
 
-Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd '$apiDir'; Write-Host '=== Quant Flow Bots API (http://localhost:5087)  [watch mode] ===' -ForegroundColor Green; dotnet watch run --urls http://localhost:5087"
-Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd '$workerDir'; Write-Host '=== Quant Flow Bots Worker  [watch mode] ===' -ForegroundColor Magenta; dotnet watch run"
+# Force Development env so appsettings.Development.json (which carries the dev DB password)
+# is loaded by ASP.NET — `dotnet watch run` spawned via Start-Process does NOT inherit
+# launchSettings.json automatically.
+$envSetup = "`$env:ASPNETCORE_ENVIRONMENT='Development'; `$env:DOTNET_ENVIRONMENT='Development';"
+Start-Process powershell -ArgumentList '-NoExit', '-Command', "$envSetup `$env:QFB_PROCESS='api'; cd '$apiDir'; Write-Host '=== Quant Flow Bots API (http://localhost:5087)  [watch mode] ===' -ForegroundColor Green; dotnet watch run --urls http://localhost:5087"
+Start-Process powershell -ArgumentList '-NoExit', '-Command', "$envSetup `$env:QFB_PROCESS='worker'; cd '$workerDir'; Write-Host '=== Quant Flow Bots Worker  [watch mode] ===' -ForegroundColor Magenta; dotnet watch run"
 Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd '$frontendDir'; Write-Host '=== Quant Flow Bots Frontend (http://localhost:3000, or next free port) ===' -ForegroundColor Cyan; npm run dev -- --port 3000"
 
 Write-Host ''

@@ -52,14 +52,3 @@ public sealed record OrderBookWallEvent(
     decimal Multiplier,
     DateTimeOffset At);
 
-public sealed record VolumeSpikeEvent(
-    string Symbol,
-    string Direction,
-    decimal Price,
-    decimal PriceChange5mPercent,
-    decimal QuoteVolume,
-    decimal AverageQuoteVolume,
-    decimal Multiplier,
-    decimal TakerBuyRatio,
-    IReadOnlyList<decimal> Sparkline,
-    DateTimeOffset At);

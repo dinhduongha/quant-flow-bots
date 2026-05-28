@@ -114,6 +114,36 @@ public static class SentimentEndpoints
                 row.Score, row.Magnitude, row.Tags, row.At, row.IngestedAt));
         }).RequireAuthorization();
 
+        // Delete one event, then rebuild the rolling state for that symbol from the rows
+        // that remain. Required because the aggregator is in-memory and Apply() is additive.
+        grp.MapDelete("/{id:guid}", async (Guid id, QuantFlowBotsDbContext db, ISentimentAggregator agg, CancellationToken ct) =>
+        {
+            var row = await db.SentimentEvents.FirstOrDefaultAsync(s => s.Id == id, ct);
+            if (row is null) return Results.NotFound();
+            var symbol = row.SymbolCode;
+            db.SentimentEvents.Remove(row);
+            await db.SaveChangesAsync(ct);
+
+            // Replay remaining rows in chronological order to rebuild this symbol's EWMA.
+            agg.Reset(symbol);
+            var remaining = await db.SentimentEvents.AsNoTracking()
+                .Where(s => s.SymbolCode == symbol)
+                .OrderBy(s => s.At)
+                .Select(s => new { s.SymbolCode, s.Source, s.Headline, s.Url, s.Score, s.Magnitude, s.Tags, s.At })
+                .ToListAsync(ct);
+            foreach (var r in remaining)
+                agg.Apply(new ScoredSentiment(r.SymbolCode, r.Source, r.Headline, r.Url, r.Score, r.Magnitude, r.At, r.Tags));
+            return Results.NoContent();
+        }).RequireAuthorization();
+
+        // Wipe everything — careful, this also drops scraped events, not just manual ones.
+        grp.MapDelete("/all", async (QuantFlowBotsDbContext db, ISentimentAggregator agg, CancellationToken ct) =>
+        {
+            await db.SentimentEvents.ExecuteDeleteAsync(ct);
+            agg.ResetAll();
+            return Results.NoContent();
+        }).RequireAuthorization();
+
         return app;
     }
 }

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using QuantFlowBots.Application.Exchanges;
+using QuantFlowBots.Application.Risk;
 using QuantFlowBots.Application.Strategies;
 using QuantFlowBots.Application.Streaming;
 using QuantFlowBots.Domain.Entities;
@@ -17,6 +18,7 @@ public sealed class BotRuntime(
     IServiceScopeFactory scopeFactory,
     BotKindRouter router,
     StrategyFactory strategyFactory,
+    SymbolRiskGate riskGate,
     ILogger<BotRuntime> logger)
 {
     private readonly ConcurrentDictionary<Guid, ActiveBot> _active = new();
@@ -58,6 +60,11 @@ public sealed class BotRuntime(
     public async Task OnCandleClosedAsync(KlineEvent evt, CancellationToken cancellationToken)
     {
         if (!evt.Candle.IsClosed) return;
+        if (riskGate.IsBlocked(evt.Symbol))
+        {
+            // Don't dispatch — symbol flagged (delist/hack/suspend). Auto-close path runs separately.
+            return;
+        }
         var matches = _active.Values.Where(b => string.Equals(b.SymbolCode, evt.Symbol, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count == 0) return;
 

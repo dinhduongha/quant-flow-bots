@@ -205,7 +205,9 @@ public sealed class BinanceRestClient(HttpClient httpClient, ILogger<BinanceRest
         CandleInterval.OneMinute => "1m",
         CandleInterval.FiveMinutes => "5m",
         CandleInterval.FifteenMinutes => "15m",
+        CandleInterval.ThirtyMinutes => "30m",
         CandleInterval.OneHour => "1h",
+        CandleInterval.TwoHours => "2h",
         CandleInterval.FourHours => "4h",
         CandleInterval.OneDay => "1d",
         _ => "1m"

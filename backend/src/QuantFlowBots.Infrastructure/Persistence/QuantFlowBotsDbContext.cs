@@ -22,6 +22,7 @@ public sealed class QuantFlowBotsDbContext(DbContextOptions<QuantFlowBotsDbConte
     public DbSet<RiskEvent> RiskEvents => Set<RiskEvent>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<SentimentEvent> SentimentEvents => Set<SentimentEvent>();
+    public DbSet<SymbolRiskFlag> SymbolRiskFlags => Set<SymbolRiskFlag>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

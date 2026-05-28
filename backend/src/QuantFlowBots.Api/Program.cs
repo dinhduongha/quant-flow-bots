@@ -73,6 +73,8 @@ builder.Services.AddSignalR().AddJsonProtocol(opt =>
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddSingleton<QuantFlowBots.Api.Endpoints.VwapCrossScanCache>();
+builder.Services.AddSingleton<QuantFlowBots.Api.Endpoints.FearGreedCache>();
 
 // Per-IP throttle on Binance-burning endpoints. Each browser refresh / click on the FE filter
 // triggers an outbound /api/v3/ticker rolling fetch — without this a few rapid clicks can

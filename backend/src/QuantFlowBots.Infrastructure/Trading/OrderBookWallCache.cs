@@ -13,6 +13,7 @@ public sealed class OrderBookWallCache
 {
     private readonly TimeSpan _ttl;
     private readonly ConcurrentDictionary<string, OrderBookWallEvent> _byKey = new();
+    private long _lastPruneTicks = DateTimeOffset.UtcNow.UtcTicks;
 
     public OrderBookWallCache() : this(TimeSpan.FromMinutes(5)) { }
     public OrderBookWallCache(TimeSpan ttl) { _ttl = ttl; }
@@ -21,6 +22,18 @@ public sealed class OrderBookWallCache
     {
         var key = $"{evt.Symbol}|{evt.Side}|{evt.Price}";
         _byKey[key] = evt;
+
+        // Active eviction. Snapshot() prunes lazily, but in the Worker process nobody calls it
+        // (the API does), so without this the dict grows unbounded as prices drift across distinct
+        // Symbol|Side|Price keys. Time-gate to ~every 30s so this stays O(1) amortised per Upsert.
+        var now = DateTimeOffset.UtcNow;
+        var last = Interlocked.Read(ref _lastPruneTicks);
+        if (now.UtcTicks - last > TimeSpan.FromSeconds(30).Ticks &&
+            Interlocked.CompareExchange(ref _lastPruneTicks, now.UtcTicks, last) == last)
+        {
+            foreach (var (k, e) in _byKey)
+                if (now - e.At > _ttl) _byKey.TryRemove(k, out _);
+        }
     }
 
     public IReadOnlyList<OrderBookWallEvent> Snapshot()

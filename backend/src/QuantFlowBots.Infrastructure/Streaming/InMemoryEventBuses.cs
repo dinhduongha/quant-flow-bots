@@ -5,21 +5,42 @@ namespace QuantFlowBots.Infrastructure.Streaming;
 
 public sealed class InMemoryMarketEventBus : IMarketEventBus
 {
-    private readonly Channel<TickerEvent> _tickers = Channel.CreateBounded<TickerEvent>(
-        new BoundedChannelOptions(8192) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = false, SingleWriter = false });
+    // One channel per subscriber (fan-out). Copy-on-write arrays so the hot publish path is
+    // lock-free; subscriptions only happen at worker startup. TryWrite + DropOldest means the
+    // WS pump never blocks on a slow consumer — each subscriber drops only its own backlog.
+    private volatile Channel<TickerEvent>[] _tickerSubs = [];
+    private volatile Channel<KlineEvent>[] _klineSubs = [];
+    private readonly object _subLock = new();
 
-    private readonly Channel<KlineEvent> _klines = Channel.CreateBounded<KlineEvent>(
-        new BoundedChannelOptions(4096) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = false, SingleWriter = false });
-
-    public ChannelReader<TickerEvent> Tickers => _tickers.Reader;
-    public ChannelReader<KlineEvent> Klines => _klines.Reader;
-
-    public ValueTask PublishAsync(MarketEvent evt, CancellationToken cancellationToken) => evt switch
+    public ChannelReader<TickerEvent> SubscribeTickers()
     {
-        TickerEvent t => _tickers.Writer.WriteAsync(t, cancellationToken),
-        KlineEvent k => _klines.Writer.WriteAsync(k, cancellationToken),
-        _ => ValueTask.CompletedTask
-    };
+        var ch = Channel.CreateBounded<TickerEvent>(
+            new BoundedChannelOptions(8192) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false });
+        lock (_subLock) { _tickerSubs = [.. _tickerSubs, ch]; }
+        return ch.Reader;
+    }
+
+    public ChannelReader<KlineEvent> SubscribeKlines()
+    {
+        var ch = Channel.CreateBounded<KlineEvent>(
+            new BoundedChannelOptions(4096) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false });
+        lock (_subLock) { _klineSubs = [.. _klineSubs, ch]; }
+        return ch.Reader;
+    }
+
+    public ValueTask PublishAsync(MarketEvent evt, CancellationToken cancellationToken)
+    {
+        switch (evt)
+        {
+            case TickerEvent t:
+                foreach (var ch in _tickerSubs) ch.Writer.TryWrite(t);
+                break;
+            case KlineEvent k:
+                foreach (var ch in _klineSubs) ch.Writer.TryWrite(k);
+                break;
+        }
+        return ValueTask.CompletedTask;
+    }
 }
 
 public sealed class InMemorySignalEventBus : ISignalEventBus
@@ -70,20 +91,18 @@ public sealed class InMemoryTickStreamBus : ITickStreamBus
     public ValueTask PublishAggTradeAsync(AggTradeEvent evt, CancellationToken cancellationToken) => _trades.Writer.WriteAsync(evt, cancellationToken);
 }
 
-public sealed class InMemoryVolumeSpikeBus : IVolumeSpikeBus
-{
-    private readonly Channel<VolumeSpikeEvent> _channel = Channel.CreateBounded<VolumeSpikeEvent>(
-        new BoundedChannelOptions(512) { FullMode = BoundedChannelFullMode.DropOldest });
-
-    public ChannelReader<VolumeSpikeEvent> Spikes => _channel.Reader;
-    public ValueTask PublishAsync(VolumeSpikeEvent evt, CancellationToken cancellationToken) => _channel.Writer.WriteAsync(evt, cancellationToken);
-}
-
 public sealed class InMemoryOrderBookWallBus : IOrderBookWallBus
 {
     private readonly Channel<OrderBookWallEvent> _channel = Channel.CreateBounded<OrderBookWallEvent>(
         new BoundedChannelOptions(512) { FullMode = BoundedChannelFullMode.DropOldest });
 
     public ChannelReader<OrderBookWallEvent> Walls => _channel.Reader;
-    public ValueTask PublishAsync(OrderBookWallEvent evt, CancellationToken cancellationToken) => _channel.Writer.WriteAsync(evt, cancellationToken);
+    public event Action<OrderBookWallEvent>? OnWall;
+
+    public async ValueTask PublishAsync(OrderBookWallEvent evt, CancellationToken cancellationToken)
+    {
+        await _channel.Writer.WriteAsync(evt, cancellationToken);
+        // Fire event AFTER channel write so a slow subscriber can't block the SignalR pump.
+        try { OnWall?.Invoke(evt); } catch { /* subscriber errors must not break publish */ }
+    }
 }
